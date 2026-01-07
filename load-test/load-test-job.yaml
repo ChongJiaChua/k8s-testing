@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: load-generator-python
+  namespace: test-app
+spec:
+  parallelism: 10
+  template:
+    spec:
+      containers:
+      - name: python-loader
+        image: ttl.sh/my-guestbook-loader:2h
+        imagePullPolicy: Always
+      restartPolicy: Never

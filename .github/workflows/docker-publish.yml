@@ -1,0 +1,26 @@
+name: Build Load Tester
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'test-app/load-test/**'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and Push
+        uses: docker/build-push-action@v4
+        with:
+          context: test-app/load-test
+          push: true
+          tags: |
+            ttl.sh/my-guestbook-loader-${{ github.sha }}:2h
+            ttl.sh/my-guestbook-loader:latest
