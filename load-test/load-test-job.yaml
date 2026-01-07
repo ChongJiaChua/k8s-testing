@@ -22,6 +22,6 @@ spec:
     spec:
       containers:
       - name: python-loader
-        image: ttl.sh/my-guestbook-loader:latest
+        image: ttl.sh/my-guestbook-loader:200b44d
         imagePullPolicy: Always
       restartPolicy: Always
