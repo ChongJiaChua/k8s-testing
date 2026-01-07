@@ -3,7 +3,7 @@ import urllib.request
 
 URL = "http://guestbook-ui.test-app.svc.cluster.local"
 
-print("Start") #log start
+print("Start load test") #log start
 
 while True:
     try:
