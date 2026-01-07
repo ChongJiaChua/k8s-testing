@@ -3,8 +3,6 @@ name: Build Load Tester
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'test-app/load-test/**'
 
 jobs:
   build-and-push:
