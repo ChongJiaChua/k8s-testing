@@ -3,12 +3,14 @@ kind: Job
 metadata:
   name: load-generator-python
   namespace: test-app
+  annotations:
+    argocd.argoproj.io/hook: Sync
 spec:
   parallelism: 10
   template:
     spec:
       containers:
       - name: python-loader
-        image: ttl.sh/my-guestbook-loader:2h
+        image: ttl.sh/my-guestbook-loader:latest
         imagePullPolicy: Always
       restartPolicy: Never
