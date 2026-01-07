@@ -1,16 +1,27 @@
-apiVersion: batch/v1
-kind: Job
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: load-generator-python
+  name: load-generator-deployment
   namespace: test-app
-  annotations:
-    argocd.argoproj.io/hook: Sync
+  labels:
+    app: load-generator
 spec:
-  parallelism: 10
+  replicas: 10 
+  selector:
+    matchLabels:
+      app: load-generator
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50% 
+      maxSurge: 50%
   template:
+    metadata:
+      labels:
+        app: load-generator
     spec:
       containers:
       - name: python-loader
         image: ttl.sh/my-guestbook-loader:latest
         imagePullPolicy: Always
-      restartPolicy: Never
+      restartPolicy: Always
