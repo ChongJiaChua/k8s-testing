@@ -17,7 +17,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: load-test
           push: true
           tags: |
             ttl.sh/my-guestbook-loader-${{ github.sha }}:2h
