@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-load-tester
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ChongJiaChua/k8s-testing.git
+    targetRevision: main
+    path: load-test 
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: test-app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true 
