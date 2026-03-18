@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"capi.stackhpc.com/cluster":"cj-cluster","capi.stackhpc.com/component":"autoscaler","capi.stackhpc.com/infrastructure-provider":"openstack","capi.stackhpc.com/managed-by":"Helm","helm.sh/chart":"openstack-cluster-0.19.2"},"name":"cj-cluster-autoscaler","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"capi.stackhpc.com/cluster":"cj-cluster","capi.stackhpc.com/component":"autoscaler"}},"template":{"metadata":{"labels":{"capi.stackhpc.com/cluster":"cj-cluster","capi.stackhpc.com/component":"autoscaler"}},"spec":{"containers":[{"args":["--cloud-provider=clusterapi","--kubeconfig=/mnt/kubeconfig/value","--clusterapi-cloud-config-authoritative","--node-group-auto-discovery=clusterapi:namespace=clusters,clusterName=cj-cluster","--cordon-node-before-terminating=true","--expander=least-waste,random","--logtostderr=true","--skip-nodes-with-custom-controller-pods=false","--skip-nodes-with-local-storage=false","--skip-nodes-with-system-pods=true","--stderrthreshold=info","--v=4"],"command":["/cluster-autoscaler"],"image":"registry.k8s.io/autoscaling/cluster-autoscaler:v1.30.4","imagePullPolicy":"IfNotPresent","livenessProbe":{"httpGet":{"path":"/health-check","port":8085}},"name":"autoscaler","ports":[{"containerPort":8085}],"resources":{},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true},"volumeMounts":[{"mountPath":"/mnt/kubeconfig","name":"kubeconfig","readOnly":true}]}],"securityContext":{"runAsNonRoot":true,"runAsUser":1001},"serviceAccountName":"cj-cluster-autoscaler","volumes":[{"name":"kubeconfig","secret":{"secretName":"cj-cluster-kubeconfig"}}]}}}}
+  labels:
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: autoscaler
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/managed-by: Helm
+    helm.sh/chart: openstack-cluster-0.19.2
+  name: cj-cluster-autoscaler
+  namespace: default
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      capi.stackhpc.com/cluster: cj-cluster
+      capi.stackhpc.com/component: autoscaler
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        capi.stackhpc.com/cluster: cj-cluster
+        capi.stackhpc.com/component: autoscaler
+    spec:
+      containers:
+      - args:
+        - --cloud-provider=clusterapi
+        - --kubeconfig=/mnt/kubeconfig/value
+        - --clusterapi-cloud-config-authoritative
+        - --node-group-auto-discovery=clusterapi:namespace=clusters,clusterName=cj-cluster
+        - --cordon-node-before-terminating=true
+        - --expander=least-waste,random
+        - --logtostderr=true
+        - --skip-nodes-with-custom-controller-pods=false
+        - --skip-nodes-with-local-storage=false
+        - --skip-nodes-with-system-pods=true
+        - --stderrthreshold=info
+        - --v=4
+        command:
+        - /cluster-autoscaler
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.30.4
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health-check
+            port: 8085
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: autoscaler
+        ports:
+        - containerPort: 8085
+          protocol: TCP
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /mnt/kubeconfig
+          name: kubeconfig
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      serviceAccount: cj-cluster-autoscaler
+      serviceAccountName: cj-cluster-autoscaler
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: kubeconfig
+        secret:
+          defaultMode: 420
+          secretName: cj-cluster-kubeconfig
