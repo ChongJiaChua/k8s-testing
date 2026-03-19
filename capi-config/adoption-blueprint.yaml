@@ -1,0 +1,1328 @@
+---
+# Source: openstack-cluster/templates/autoscaler/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cj-cluster-autoscaler
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: autoscaler
+---
+# Source: openstack-cluster/charts/addons/templates/cni/calico.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-cni-calico-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: cni-calico
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    installation:
+      nodeMetricsPort: 9091
+      typhaMetricsPort: 9093
+      calicoNetwork:
+        bgp: Disabled
+        nodeAddressAutodetectionV4:
+          kubernetes: NodeInternalIP
+        ipPools:
+    {% for cidr in cluster.spec.clusterNetwork.pods.cidrBlocks %}
+          - blockSize: 26
+            cidr: {{ cidr }}
+            disableBGPExport: false
+            encapsulation: VXLAN
+            natOutgoing: Enabled
+            nodeSelector: all()
+    {% endfor %}
+  overrides: |
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: ""
+---
+# Source: openstack-cluster/charts/addons/templates/etcd-defrag.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-etcd-defrag-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: etcd-defrag
+    addons.stackhpc.com/watch: ""
+stringData:
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/mellanox-network-operator.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-mellanox-network-operator-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: mellanox-network-operator
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    # Use the shared NFD
+    nfd:
+      enabled: false
+    # Deploy the default NICClusterPolicy
+    deployCR: true
+    # Deploy the OFED driver onto nodes with a suitable NIC
+    ofedDriver:
+      deploy: true
+      # OFED takes ages to deploy on low-resource nodes
+      # The startup probe has a fixed failure threshold of 60
+      # So in order to give the drivers up to one hour to install, we use a period
+      # of 60 seconds for the startup probe
+      startupProbe:
+        initialDelaySeconds: 60
+        periodSeconds: 60
+    # Deploy the RDMA shared device plugin to allow pods to access the RDMA device
+    rdmaSharedDevicePlugin:
+      deploy: true
+    # Disable all other features for now
+    ibKubernetes:
+      deploy: false
+    nvPeerDriver:
+      deploy: false
+    sriovNetworkOperator:
+      enabled: false
+    sriovDevicePlugin:
+      deploy: false
+    secondaryNetwork:
+      deploy: false
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/metrics-server.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-metrics-server-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: metrics-server
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    args:
+      - --kubelet-insecure-tls
+    # Since we deploy in kube-system, we need a PDB to allow eviction to happen
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/nfd.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-node-feature-discovery-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: node-feature-discovery
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    master:
+      extraLabelNs:
+        - nvidia.com
+    worker:
+      # Allow the NFD pods to be scheduled on all pods
+      tolerations:
+        - effect: "NoSchedule"
+          operator: "Exists"
+      # We want to be able to identify nodes with high-performance hardware
+      # So the whitelisted device classes are:
+      #   02   - Network Controllers (e.g. Ethernet, Infiniband)
+      #   03   - Display Controllers (e.g. GPUs)
+      #   0b40 - Co-processors
+      #   12   - Processing Accelerators (e.g. specialised AI inference chips)
+      config:
+        sources:
+          pci:
+            deviceClassWhitelist:
+              - "02"
+              - "03"
+              - "0b40"
+              - "12"
+            deviceLabelFields:
+              - vendor
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/node-problem-detector.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-node-problem-detector-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: node-problem-detector
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    metrics:
+      enabled: false
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/nvidia-gpu-operator.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-nvidia-gpu-operator-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: nvidia-gpu-operator
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    # Use the shared NFD
+    nfd:
+      enabled: false
+    # Export operator and node metrics in a Prometheus format.
+    # The component provides information on the status of the
+    # operator (e.g. reconciliation status, number of GPU enabled nodes).
+    nodeStatusExporter:
+      enabled: true
+    toolkit:
+      # Allowing the toolkit to edit /etc/containerd/config.toml (the default)
+      # breaks nvidia pod deployment on clusters with Harbor cache enabled.
+      # Instead make a new config file specifically for nvidia runtime config,
+      # which is parsed as an "include" in the main containerd config file.
+      #
+      # https://github.com/NVIDIA/gpu-operator/issues/301
+      env:
+        - name: "CONTAINERD_CONFIG"
+          value: "/etc/containerd/conf.d/nvidia.toml"
+  overrides: |
+    dcgmExporter:
+      serviceMonitor:
+        enabled: true
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/ccm.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-ccm-openstack-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: ccm-openstack
+    addons.stackhpc.com/watch: ""
+stringData:
+  defaults: |
+    secret:
+      create: false
+    cluster:
+      name: cj-cluster
+    controllerExtraArgs: |-
+      - --use-service-account-credentials=false
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: ""
+    tolerations:
+      - key: node.cloudprovider.kubernetes.io/uninitialized
+        value: "true"
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+  overrides: |
+    {}
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/csi-cinder.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-csi-cinder-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: csi-cinder
+    addons.stackhpc.com/watch: ""
+stringData:
+  # By default, we disable the storage class deployed by the cinder-csi chart
+  # We deploy our own instead as it gives us more control over the parameters
+  # We also disable the topology-aware scheduling by default
+  defaults: |
+    csi:
+      plugin:
+        # This has to be non-empty or the chart fails to render
+        volumes:
+          - name: cacert
+            emptyDir: {}
+        volumeMounts:
+          - name: cloud-config
+            mountPath: /etc/config
+            readOnly: true
+          - name: cloud-config
+            mountPath: /etc/kubernetes
+            readOnly: true
+      provisioner:
+        topology: "false"
+    secret:
+      enabled: true
+      create: false
+      name: cloud-config
+    storageClass:
+      enabled: false
+    clusterID: cj-cluster
+  overrides: |
+    csi:
+      plugin:
+        controllerPlugin:
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+---
+# Source: openstack-cluster/templates/control-plane/secret-admission-configuration.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-admission-configuration
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: admission-configuration
+stringData:
+  admission-configuration.yaml: |
+    apiVersion: apiserver.config.k8s.io/v1
+    kind: AdmissionConfiguration
+    plugins: []
+---
+# Source: openstack-cluster/templates/secret-cloud-config.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cj-cluster-cloud-credentials
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: cloud-credentials
+  annotations:
+    # If the cloud credentials are deleted before the cluster has finished deleting, then the cluster
+    # deletion cannot proceed any further. So prevent Helm from deleting it.
+    helm.sh/resource-policy: keep
+stringData:
+  # Just include the data for the cloud we will be using
+  clouds.yaml: |
+    clouds:
+      openstack:
+        auth:
+          application_credential_id: 9641f260135a41f482ee94654881bbb7
+          application_credential_secret: ynHCrITwPxyoz_ZKdzD6dwlOFluP-1nHGTxojfr2Lg9K05mVol01rmiVcAplTmHwTaveU0QF7gb_B204t-ubRA
+          auth_url: https://openstack.stfc.ac.uk:5000/v3
+          project_id: 0f90d3f0dd9e40f8b63187db52cc2b5e
+        auth_type: v3applicationcredential
+        identity_api_version: 3
+        interface: public
+        region_name: RegionOne
+  cacert: |
+    -----BEGIN CERTIFICATE-----
+    MIIIBTCCBe2gAwIBAgIRAPCLUpU+riVHiL9LCuU6g5wwDQYJKoZIhvcNAQEMBQAw
+    RDELMAkGA1UEBhMCTkwxGTAXBgNVBAoTEEdFQU5UIFZlcmVuaWdpbmcxGjAYBgNV
+    BAMTEUdFQU5UIE9WIFJTQSBDQSA0MB4XDTI0MTEwNTAwMDAwMFoXDTI1MTEwNTIz
+    NTk1OVowaDELMAkGA1UEBhMCR0IxEjAQBgNVBAgTCVdpbHRzaGlyZTEjMCEGA1UE
+    ChMaVUsgUmVzZWFyY2ggYW5kIElubm92YXRpb24xIDAeBgNVBAMTF3NlcnZpY2Ux
+    Lm51YmVzLnJsLmFjLnVrMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+    1zcjKfyWC38pvZlMZpGh1bIb9+qKlJOBnHeK1jY4tCgQ0STfZUAiPOy0BuW530ze
+    k7969MwuYO7d7gvXXwo9l4ArWGQsUBF4O6q4a1PTkKDyih9aXMi1E5TuVVKhGcsG
+    NU2zi6w1EekUiAMMMLylFaUW6dyfMqTiWH05/I/uq6ZceiOKCcIlSI8F5OaMyMDF
+    uQftS9c96znPqXhze6aQHU+fVdY9cbXrDWxiVHOF0El/4UMnFShawqK1CJ+2jasd
+    yvXUvCQGrxXfdSr+oiwpk1it+mowVNA35wirYoDfajBaDlq6RxKv5j66LQEs3W6O
+    qj4xX0eNpE4ITy+IOSwppQIDAQABo4IDzDCCA8gwHwYDVR0jBBgwFoAUbx01SRBs
+    MvpZoJ68iugflb5xegwwHQYDVR0OBBYEFJsLIgHAdmpHXwzZrtIW0BJLk2O1MA4G
+    A1UdDwEB/wQEAwIFoDAMBgNVHRMBAf8EAjAAMB0GA1UdJQQWMBQGCCsGAQUFBwMB
+    BggrBgEFBQcDAjBJBgNVHSAEQjBAMDQGCysGAQQBsjEBAgJPMCUwIwYIKwYBBQUH
+    AgEWF2h0dHBzOi8vc2VjdGlnby5jb20vQ1BTMAgGBmeBDAECAjA/BgNVHR8EODA2
+    MDSgMqAwhi5odHRwOi8vR0VBTlQuY3JsLnNlY3RpZ28uY29tL0dFQU5UT1ZSU0FD
+    QTQuY3JsMHUGCCsGAQUFBwEBBGkwZzA6BggrBgEFBQcwAoYuaHR0cDovL0dFQU5U
+    LmNydC5zZWN0aWdvLmNvbS9HRUFOVE9WUlNBQ0E0LmNydDApBggrBgEFBQcwAYYd
+    aHR0cDovL0dFQU5ULm9jc3Auc2VjdGlnby5jb20wggF8BgorBgEEAdZ5AgQCBIIB
+    bASCAWgBZgB1AN3cyjSV1+EWBeeVMvrHn/g9HFDf2wA6FBJ2Ciysu8gqAAABkvuJ
+    pHkAAAQDAEYwRAIgc+o49V0kR2g2QnEJuuHLPIakDdoAp+ZKIZNK9QUdv/YCIBY5
+    Hf6CZcF8y6E0J4RRzfaXw9iNlL1szaWPBHQVr7wmAHUAzPsPaoVxCWX+lZtTzumy
+    fCLphVwNl422qX5UwP5MDbAAAAGS+4mkKgAABAMARjBEAiBoleYmz9BGomQEhWOS
+    ihjR2mUjh4kVKBHDW8ivkMqBVAIgLHlmJ2uEGyvC4qmbSnxv+PlMCSrHK/8wDhhz
+    RF/8saAAdgAS8U40vVNyTIQGGcOPP3oT+Oe1YoeInG0wBYTr5YYmOgAAAZL7iaQH
+    AAAEAwBHMEUCIAtQ1Weja9l+jESf3syHq9Nc0gRXUEXAxBO3qKqyNG1rAiEAspRr
+    8b+3ygmVm9TsGHfiEaHBBMTtnZxpOI+XVoP/tHAwgcUGA1UdEQSBvTCBuoIXc2Vy
+    dmljZTEubnViZXMucmwuYWMudWuCFGNsb3VkLm51YmVzLnJsLmFjLnVrghZjbG91
+    ZC5udWJlcy5zdGZjLmFjLnVrghBjbG91ZC5zdGZjLmFjLnVrghNuZXdjbG91ZC5z
+    dGZjLmFjLnVrghhvcGVuc3RhY2subnViZXMucmwuYWMudWuCGm9wZW5zdGFjay5u
+    dWJlcy5zdGZjLmFjLnVrghRvcGVuc3RhY2suc3RmYy5hYy51azANBgkqhkiG9w0B
+    AQwFAAOCAgEAHWDDspdJ4A6sNHqael+dD8j5acMr4qu1CX6qlN6s+a3CoMDWDWn3
+    kB6klpV4cNs0zph77nTc+rq97uX0TtKLtw0d7va1EBMdBgHCKEfEq6uhO6S9DrE5
+    /85XORmVjhGPcnPh3x9WzYH3gGrqZsFY8XQ1pllwwDSCUngwEp3BkxZclXwA31fd
+    nwuNjjD0ZsGQVnz7OS258s+3S7E9dDgvFdUh/als0z80GsZuHxNUBhdv0otTxjqd
+    lS+Fbd7D0DAQi0Zek2jfQDi3LoZopYdXDjmOqlzots8Fnp9QyRoLuOXzJCK6GD4R
+    oU87Nn7tQ3bc0L68xk7+tEaRhG7vAlPzhPgaDYf2uRMk/tlf2UHKKigyW1tOjmPj
+    7XU14FQrDmlPtJi7aoTgXaia9VIn5/noXydPYG92fIoqDaEN1/lYdc9wSMmSzSUn
+    QYbAX8CYBiAxf7msHvWJ0tBxKGETkB1hM1rF4mr+SXQc+KCE9lJY0WfqSvfrTQfe
+    gQK6M8YWyJueb75rk/aIhEud1svNm0fYOhI76vsVp1oHO7FDhBWYexn0ytJoIlje
+    BtqFE7/dp3hZRd+AfFCyaz9n7Y3qkcfndYELIVZch0IapcBJzqGbrgc2z6ND6Dmo
+    otryEeoZYD/PlTY0cv32scHRML6/9EaJTsywqeIkJqqQq5DzVOnCfus=
+    -----END CERTIFICATE-----
+    -----BEGIN CERTIFICATE-----
+    MIIG5DCCBMygAwIBAgIQBHuLbQmxZWdCqKfBhpyfqjANBgkqhkiG9w0BAQwFADCB
+    iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
+    cnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNV
+    BAMTJVVTRVJUcnVzdCBSU0EgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMjAw
+    MjE4MDAwMDAwWhcNMzMwNTAxMjM1OTU5WjBEMQswCQYDVQQGEwJOTDEZMBcGA1UE
+    ChMQR0VBTlQgVmVyZW5pZ2luZzEaMBgGA1UEAxMRR0VBTlQgRVYgUlNBIENBIDQw
+    ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCfQj5WwXIGcoT7zvITdpnR
+    8P7auxwyAmBFjTtOksiLjlXP62wum102dz70U1cvdWnrK3e32SyVHIvVVJRIeUIl
+    q9cRj38gd/4t/e2etn+tpHUtL9wK5AIXs9tpIjEnw4UlcpLsVpLEiyc1Sc2XtwbC
+    or7MMrOB4qVucNPF+GQHWi/Vnss5zLVzXlfuJ7A5Efx1lSeWvMkNDdHxxuv62yYs
+    j+FEiY1IXjV1WyWxTlseJcazDUciw7LMK30Tp9smdONuPX6rwEVSTUiC3QzbwNaP
+    4C1Um2yAEbdve4Ru/qURloHud5LkBaJTm2+MDJz+yHZf4g7lvKpbcKrf59Jg8h02
+    sRipT6GA3cjpgB5RU5bnXFkn4kpT2+/P25HQFeg0lyKw8dFm864sn8a37GrWviOC
+    TOCWtrrSxtvLvCy9axxgc9btrA596rMKrw2tpp42KPPRXHjaVqfLf6Wj2SCynFWx
+    +insGBIikpbxxOdrt4qGEDgVdSOCN9f3b6CgyTs7PD5KlUiei05Cg7sbX/Zi9DE0
+    8782f4SGsZtyn4G/rMIqxyZ8SfyQZV17c+zNkttdy93iQv+IlNJGalCM56Mmkv5n
+    gRtWJXzk0stw30tVWdRSGlRVxxScfcwEF1GcfVjuyosTSnEju61Qi9N5WvhqitIX
+    J/wLzkppJc77xbQX+5tinwIDAQABo4IBizCCAYcwHwYDVR0jBBgwFoAUU3m/Wqor
+    Ss9UgOHYm8Cd8rIDZsswHQYDVR0OBBYEFLYgDq6jy+lVAwYTZtSsvieQVGDzMA4G
+    A1UdDwEB/wQEAwIBhjASBgNVHRMBAf8ECDAGAQH/AgEAMB0GA1UdJQQWMBQGCCsG
+    AQUFBwMBBggrBgEFBQcDAjA4BgNVHSAEMTAvMC0GBFUdIAAwJTAjBggrBgEFBQcC
+    ARYXaHR0cHM6Ly9zZWN0aWdvLmNvbS9DUFMwUAYDVR0fBEkwRzBFoEOgQYY/aHR0
+    cDovL2NybC51c2VydHJ1c3QuY29tL1VTRVJUcnVzdFJTQUNlcnRpZmljYXRpb25B
+    dXRob3JpdHkuY3JsMHYGCCsGAQUFBwEBBGowaDA/BggrBgEFBQcwAoYzaHR0cDov
+    L2NydC51c2VydHJ1c3QuY29tL1VTRVJUcnVzdFJTQUFkZFRydXN0Q0EuY3J0MCUG
+    CCsGAQUFBzABhhlodHRwOi8vb2NzcC51c2VydHJ1c3QuY29tMA0GCSqGSIb3DQEB
+    DAUAA4ICAQAmUg8HhUdEzgbJQrk3G7JLuFyKJHWQ74FRHMFCorKd+h9TXoxSBOAo
+    PZU5iIKv/mPXyhT+sh75NvlXr/N+d52Tx2HIY3IYWx82I0uaa0/tPKImL6ByJuqu
+    mcvb2c4MqCfTGAi8kILbQt3WHK/idEiG2APMlq1YNoR3aBh7tc1rloxmQ5joEmrj
+    wSoNA60AV2w9zEmi4KTYVZzsTjRgK8vh8WGQ4un3ZQhRYIVTdiI1J63kohIcpFTe
+    fJyz9ip3C1Rjr5kink4bGlcxpRb1WjEs3OWhzCJSo7/ZZIIZu0pRsDKltkpNmoUQ
+    5/4aIAEG9a9azLTKxTktcKOEJCOzdVIhNC/b6jrCFD7vR9v/dTI8zX9Ol1cK2nms
+    k/uD5CZcvMZ6Rh/D7AS7B8dWODbN3nQPzucgdION4KHvJJe1G2SxDe+5MQO4CbwI
+    WI5U+OnxKTP3vlJv2CxvP/+4Drf3hkp7YvVSZnmc9KlOeDvdC3Om9jNSw3njrEde
+    foNq1eeeV89hCWKKdn05kpyitOiy7pTJJuDgVs64YGaSdQZG0E4m1bMSo13cQxYg
+    J6EY3nagUJyiLzdMNuhbKlj2oXxjGLgUXYJJgSnnjqK7ldTbJDXK/qVX0gQSOr1b
+    72T77sRtDcLsmkh7hYi6a+QwKARgmMLZjDirRS6ovWtH60yG2rkxBw==
+    -----END CERTIFICATE-----
+    -----BEGIN CERTIFICATE-----
+    MIIF3jCCA8agAwIBAgIQAf1tMPyjylGoG7xkDjUDLTANBgkqhkiG9w0BAQwFADCB
+    iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
+    cnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNV
+    BAMTJVVTRVJUcnVzdCBSU0EgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAw
+    MjAxMDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBiDELMAkGA1UEBhMCVVMxEzARBgNV
+    BAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVU
+    aGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBSU0EgQ2Vy
+    dGlmaWNhdGlvbiBBdXRob3JpdHkwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIK
+    AoICAQCAEmUXNg7D2wiz0KxXDXbtzSfTTK1Qg2HiqiBNCS1kCdzOiZ/MPans9s/B
+    3PHTsdZ7NygRK0faOca8Ohm0X6a9fZ2jY0K2dvKpOyuR+OJv0OwWIJAJPuLodMkY
+    tJHUYmTbf6MG8YgYapAiPLz+E/CHFHv25B+O1ORRxhFnRghRy4YUVD+8M/5+bJz/
+    Fp0YvVGONaanZshyZ9shZrHUm3gDwFA66Mzw3LyeTP6vBZY1H1dat//O+T23LLb2
+    VN3I5xI6Ta5MirdcmrS3ID3KfyI0rn47aGYBROcBTkZTmzNg95S+UzeQc0PzMsNT
+    79uq/nROacdrjGCT3sTHDN/hMq7MkztReJVni+49Vv4M0GkPGw/zJSZrM233bkf6
+    c0Plfg6lZrEpfDKEY1WJxA3Bk1QwGROs0303p+tdOmw1XNtB1xLaqUkL39iAigmT
+    Yo61Zs8liM2EuLE/pDkP2QKe6xJMlXzzawWpXhaDzLhn4ugTncxbgtNMs+1b/97l
+    c6wjOy0AvzVVdAlJ2ElYGn+SNuZRkg7zJn0cTRe8yexDJtC/QV9AqURE9JnnV4ee
+    UB9XVKg+/XRjL7FQZQnmWEIuQxpMtPAlR1n6BB6T1CZGSlCBst6+eLf8ZxXhyVeE
+    Hg9j1uliutZfVS7qXMYoCAQlObgOK6nyTJccBz8NUvXt7y+CDwIDAQABo0IwQDAd
+    BgNVHQ4EFgQUU3m/WqorSs9UgOHYm8Cd8rIDZsswDgYDVR0PAQH/BAQDAgEGMA8G
+    A1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEMBQADggIBAFzUfA3P9wF9QZllDHPF
+    Up/L+M+ZBn8b2kMVn54CVVeWFPFSPCeHlCjtHzoBN6J2/FNQwISbxmtOuowhT6KO
+    VWKR82kV2LyI48SqC/3vqOlLVSoGIG1VeCkZ7l8wXEskEVX/JJpuXior7gtNn3/3
+    ATiUFJVDBwn7YKnuHKsSjKCaXqeYalltiz8I+8jRRa8YFWSQEg9zKC7F4iRO/Fjs
+    8PRF/iKz6y+O0tlFYQXBl2+odnKPi4w2r78NBc5xjeambx9spnFixdjQg3IM8WcR
+    iQycE0xyNN+81XHfqnHd4blsjDwSXWXavVcStkNr/+XeTWYRUc+ZruwXtuhxkYze
+    Sf7dNXGiFSeUHM9h4ya7b6NnJSFd5t0dCy5oGzuCr+yDZ4XUmFF0sbmZgIn/f3gZ
+    XHlKYC6SQK5MNyosycdiyA5d9zZbyuAlJQG03RoHnHcAP9Dc1ew91Pq7P8yF1m9/
+    qS3fuQL39ZeatTXaw2ewh0qpKJ4jjv9cJ2vhsE/zB+4ALtRZh8tSQZXq9EfX7mRB
+    VXyNWQKV3WKdwrnuWih0hKWbt5DHDAff9Yk2dDLWKMGwsAvgnEzDHNb842m1R0aB
+    L6KCq9NjRHDEjf8tM7qtj3u1cIiuPhnPQCjY/MiQu12ZIvVS5ljFH4gxQ+6IHdfG
+    jjxDah2nGN59PRbxYvnKkKj9
+    -----END CERTIFICATE-----
+---
+# Source: openstack-cluster/templates/autoscaler/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cj-cluster-autoscaler
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: autoscaler
+rules:
+  - apiGroups:
+      - cluster.x-k8s.io
+    resources:
+      - machinedeployments
+      - machines
+      - machinesets
+      - machinepools
+    verbs:
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - cluster.x-k8s.io
+    resources:
+      - machinedeployments/scale
+    verbs:
+      - get
+      - patch
+      - update
+---
+# Source: openstack-cluster/templates/autoscaler/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cj-cluster-autoscaler
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cj-cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    namespace: clusters
+    name: cj-cluster-autoscaler
+---
+# Source: openstack-cluster/templates/autoscaler/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cj-cluster-autoscaler
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      capi.stackhpc.com/cluster: cj-cluster
+      capi.stackhpc.com/component: autoscaler
+  template:
+    metadata:
+      labels:
+        capi.stackhpc.com/cluster: cj-cluster
+        capi.stackhpc.com/component: autoscaler
+    spec:
+      serviceAccountName: cj-cluster-autoscaler
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: autoscaler
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.30.4
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-autoscaler
+          args:
+            - --cloud-provider=clusterapi
+            - --kubeconfig=/mnt/kubeconfig/value
+            - --clusterapi-cloud-config-authoritative
+            - --node-group-auto-discovery=clusterapi:namespace=clusters,clusterName=cj-cluster
+            - --cordon-node-before-terminating=true
+            - --expander=least-waste,random
+            - --logtostderr=true
+            - --skip-nodes-with-custom-controller-pods=false
+            - --skip-nodes-with-local-storage=false
+            - --skip-nodes-with-system-pods=true
+            - --stderrthreshold=info
+            - --v=4
+          livenessProbe:
+            httpGet:
+              path: /health-check
+              port: 8085
+          ports:
+            - containerPort: 8085
+          resources: {}
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /mnt/kubeconfig
+              readOnly: true
+      volumes:
+        # Mount the kubeconfig for the workload cluster from the secret
+        - name: kubeconfig
+          secret:
+            secretName: cj-cluster-kubeconfig
+---
+# Source: openstack-cluster/templates/cluster.yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  annotations:
+    cluster.x-k8s.io/paused: "true"
+  name: cj-cluster
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+  annotations:
+    cluster.x-k8s.io/paused: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 10.0.0.0/13
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+        - 10.8.0.0/13
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: cj-cluster-control-plane
+    namespace: clusters
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: OpenStackCluster
+    name: cj-cluster
+    namespace: clusters
+---
+# Source: openstack-cluster/charts/addons/templates/cni/calico.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-cni-calico
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: cni-calico
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: tigera-operator
+    repo: https://projectcalico.docs.tigera.io/charts
+    version: v3.29.3
+  targetNamespace: tigera-operator
+  releaseName: cni-calico
+  valuesSources:
+    - secret:
+        name: cj-cluster-cni-calico-config
+        key: defaults
+    - secret:
+        name: cj-cluster-cni-calico-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/etcd-defrag.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-etcd-defrag
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: etcd-defrag
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    repo: https://azimuth-cloud.github.io/capi-helm-charts
+    name: etcd-defrag
+    version: 0.19.2
+  targetNamespace: kube-system
+  releaseName: etcd-defrag
+  valuesSources:
+    - secret:
+        name: cj-cluster-etcd-defrag-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/mellanox-network-operator.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-mellanox-network-operator
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: mellanox-network-operator
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: network-operator
+    repo: https://helm.ngc.nvidia.com/nvidia
+    version: 25.1.0
+  targetNamespace: network-operator
+  releaseName: mellanox-network-operator
+  valuesSources:
+    - secret:
+        name: cj-cluster-mellanox-network-operator-config
+        key: defaults
+    - secret:
+        name: cj-cluster-mellanox-network-operator-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/metrics-server.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-metrics-server
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: metrics-server
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: metrics-server
+    repo: https://kubernetes-sigs.github.io/metrics-server
+    version: 3.12.2
+  targetNamespace: kube-system
+  releaseName: metrics-server
+  valuesSources:
+    - secret:
+        name: cj-cluster-metrics-server-config
+        key: defaults
+    - secret:
+        name: cj-cluster-metrics-server-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/nfd.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-node-feature-discovery
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: node-feature-discovery
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: node-feature-discovery
+    repo: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+    version: 0.17.3
+  targetNamespace: node-feature-discovery
+  releaseName: node-feature-discovery
+  valuesSources:
+    - secret:
+        name: cj-cluster-node-feature-discovery-config
+        key: defaults
+    - secret:
+        name: cj-cluster-node-feature-discovery-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/node-problem-detector.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-node-problem-detector
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: node-problem-detector
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: node-problem-detector
+    repo: https://charts.deliveryhero.io
+    version: 2.3.14
+  targetNamespace: node-problem-detector
+  releaseName: node-problem-detector
+  valuesSources:
+    - secret:
+        name: cj-cluster-node-problem-detector-config
+        key: defaults
+    - secret:
+        name: cj-cluster-node-problem-detector-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/nvidia-gpu-operator.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-nvidia-gpu-operator
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: nvidia-gpu-operator
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: gpu-operator
+    repo: https://helm.ngc.nvidia.com/nvidia
+    version: v25.10.1
+  targetNamespace: gpu-operator
+  releaseName: nvidia-gpu-operator
+  valuesSources:
+    - secret:
+        name: cj-cluster-nvidia-gpu-operator-config
+        key: defaults
+    - secret:
+        name: cj-cluster-nvidia-gpu-operator-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/ccm.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-ccm-openstack
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: ccm-openstack
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: openstack-cloud-controller-manager
+    repo: https://kubernetes.github.io/cloud-provider-openstack
+    version: 2.32.0
+  targetNamespace: openstack-system
+  releaseName: ccm-openstack
+  valuesSources:
+    - secret:
+        name: cj-cluster-ccm-openstack-config
+        key: defaults
+    - secret:
+        name: cj-cluster-ccm-openstack-config
+        key: overrides
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/csi-cinder.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: HelmRelease
+metadata:
+  name: cj-cluster-csi-cinder
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: csi-cinder
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  chart:
+    name: openstack-cinder-csi
+    repo: https://kubernetes.github.io/cloud-provider-openstack
+    version: 2.32.0
+  targetNamespace: openstack-system
+  releaseName: csi-cinder
+  valuesSources:
+    - secret:
+        name: cj-cluster-csi-cinder-config
+        key: defaults
+    - secret:
+        name: cj-cluster-csi-cinder-config
+        key: overrides
+---
+# Source: openstack-cluster/templates/node-group/kubeadm-config-template.yaml
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: cj-cluster-default-md-0-b339ccaa
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: worker
+    capi.stackhpc.com/node-group: default-md-0
+  annotations:
+    capi.stackhpc.com/template-checksum: b339ccaabe0a6ff64e62507cef178690e52299321671696a8facaf865ad33227
+    # Cluster API complains when old templates disappear before it has rolled all the machines over
+    # When deploying with Helm, leave the resource behind and let Cluster API clean it up
+    helm.sh/resource-policy: keep
+spec:
+  template:
+    spec:
+      files:
+        - content: |
+            # This file is created by the capi-helm-chart to ensure that its parent directory exists
+          owner: root:root
+          path: /etc/containerd/conf.d/.keepdir
+          permissions: "0644"
+        - content: |
+            # This file is created by the capi-helm-chart to ensure that its parent directory exists
+          owner: root:root
+          path: /etc/containerd/certs.d/.keepdir
+          permissions: "0644"
+        - content: |2
+
+            server = "https://registry-1.docker.io"
+            [host."https://dockerhub.stfc.ac.uk/v2/"]
+            capabilities = ["pull", "resolve"]
+            skip_verify = false
+            override_path = true
+          owner: root:root
+          path: /etc/containerd/certs.d/docker.io/hosts.toml
+          permissions: "0644"
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+            node-labels: capi.stackhpc.com/node-group=default-md-0
+          name: '{{ local_hostname }}'
+      preKubeadmCommands:
+        - |-
+          /usr/bin/bash -s <<EOF
+          grep -q '\[plugins."io.containerd.grpc.v1.cri".registry\]' /etc/containerd/config.toml && exit
+          cat <<CONTENT >> /etc/containerd/config.toml
+          [plugins."io.containerd.grpc.v1.cri".registry]
+            config_path = "/etc/containerd/certs.d"
+          CONTENT
+          systemctl restart containerd
+          EOF
+---
+# Source: openstack-cluster/templates/control-plane/kubeadm-control-plane.yaml
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: cj-cluster-control-plane
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: control-plane
+  annotations:
+    # We let Cluster API clean up the control plane resource
+    # Deleting it ourselves, which CAPI is not expecting, can cause some nasty race conditions
+    helm.sh/resource-policy: keep
+spec:
+  version: v1.34.3
+  replicas: 5
+  remediationStrategy:
+    maxRetry: 3
+    minHealthyPeriod: 1h0m0s
+    retryPeriod: 20m0s
+  rolloutStrategy:
+    rollingUpdate:
+      maxSurge: 1
+    type: RollingUpdate
+  machineTemplate:
+    metadata:
+      labels:
+        capi.stackhpc.com/cluster: cj-cluster
+        capi.stackhpc.com/component: control-plane
+    infrastructureRef:
+      kind: OpenStackMachineTemplate
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      name: cj-cluster-control-plane-ad1a154c
+      namespace: clusters
+    nodeDrainTimeout: 5m0s
+    nodeVolumeDetachTimeout: 5m0s
+    nodeDeletionTimeout: 5m0s
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          admission-control-config-file: /etc/kubernetes/admission/configuration.yaml
+          v: "2"
+        extraVolumes:
+          - hostPath: /etc/kubernetes/admission
+            mountPath: /etc/kubernetes/admission
+            name: admission-configuration
+            pathType: Directory
+            readOnly: true
+      controllerManager:
+        extraArgs:
+          bind-address: 0.0.0.0
+          cloud-provider: external
+      etcd:
+        local:
+          dataDir: /var/lib/etcd
+          extraArgs:
+            election-timeout: "5000"
+            heartbeat-interval: "500"
+            listen-metrics-urls: http://0.0.0.0:2381
+            quota-backend-bytes: "4294967296"
+      scheduler:
+        extraArgs:
+          bind-address: 0.0.0.0
+    files:
+      - contentFrom:
+          secret:
+            key: admission-configuration.yaml
+            name: cj-cluster-admission-configuration
+        owner: root:root
+        path: /etc/kubernetes/admission/configuration.yaml
+        permissions: "0644"
+      - content: |
+          # This file is created by the capi-helm-chart to ensure that its parent directory exists
+        owner: root:root
+        path: /etc/containerd/conf.d/.keepdir
+        permissions: "0644"
+      - content: |
+          # This file is created by the capi-helm-chart to ensure that its parent directory exists
+        owner: root:root
+        path: /etc/containerd/certs.d/.keepdir
+        permissions: "0644"
+      - content: |2
+
+          server = "https://registry-1.docker.io"
+          [host."https://dockerhub.stfc.ac.uk/v2/"]
+          capabilities = ["pull", "resolve"]
+          skip_verify = false
+          override_path = true
+        owner: root:root
+        path: /etc/containerd/certs.d/docker.io/hosts.toml
+        permissions: "0644"
+      - content: |
+          ---
+          apiVersion: kubeproxy.config.k8s.io/v1alpha1
+          kind: KubeProxyConfiguration
+          metricsBindAddress: 0.0.0.0:10249
+        owner: root:root
+        path: /run/kubeadm/kube-proxy-configuration.yaml
+        permissions: "0644"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+        name: '{{ local_hostname }}'
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+        name: '{{ local_hostname }}'
+    preKubeadmCommands:
+      - |-
+        /usr/bin/bash -s <<EOF
+        grep -q '\[plugins."io.containerd.grpc.v1.cri".registry\]' /etc/containerd/config.toml && exit
+        cat <<CONTENT >> /etc/containerd/config.toml
+        [plugins."io.containerd.grpc.v1.cri".registry]
+          config_path = "/etc/containerd/certs.d"
+        CONTENT
+        systemctl restart containerd
+        EOF
+      - cat /run/kubeadm/kube-proxy-configuration.yaml >> /run/kubeadm/kubeadm.yaml
+---
+# Source: openstack-cluster/templates/node-group/machine-deployment.yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: cj-cluster-default-md-0
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: worker
+    capi.stackhpc.com/node-group: default-md-0
+  annotations:
+spec:
+  clusterName: cj-cluster
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      deletePolicy: Random
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      capi.stackhpc.com/cluster: cj-cluster
+      capi.stackhpc.com/component: worker
+      capi.stackhpc.com/node-group: default-md-0
+      cluster.x-k8s.io/cluster-name: cj-cluster
+  template:
+    metadata:
+      labels:
+        capi.stackhpc.com/cluster: cj-cluster
+        capi.stackhpc.com/component: worker
+        capi.stackhpc.com/node-group: default-md-0
+    spec:
+      clusterName: cj-cluster
+      version: v1.34.3
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: cj-cluster-default-md-0-b339ccaa
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: OpenStackMachineTemplate
+        name: cj-cluster-default-md-0-2a187d81
+      nodeDrainTimeout: 5m0s
+      nodeVolumeDetachTimeout: 5m0s
+      nodeDeletionTimeout: 5m0s
+---
+# Source: openstack-cluster/templates/control-plane/machine-health-check.yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: cj-cluster-control-plane
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: control-plane
+spec:
+  clusterName: cj-cluster
+  selector:
+    matchLabels:
+      capi.stackhpc.com/cluster: cj-cluster
+      capi.stackhpc.com/component: control-plane
+  maxUnhealthy: 1
+  nodeStartupTimeout: 30m0s
+  unhealthyConditions:
+    - status: Unknown
+      timeout: 5m0s
+      type: Ready
+    - status: "False"
+      timeout: 5m0s
+      type: Ready
+---
+# Source: openstack-cluster/templates/node-group/machine-health-check.yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: cj-cluster-default-md-0
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: worker
+    capi.stackhpc.com/node-group: default-md-0
+spec:
+  clusterName: cj-cluster
+  selector:
+    matchLabels:
+      capi.stackhpc.com/cluster: cj-cluster
+      capi.stackhpc.com/component: worker
+      capi.stackhpc.com/node-group: default-md-0
+  maxUnhealthy: 20%
+  nodeStartupTimeout: 10m0s
+  unhealthyConditions:
+    - status: Unknown
+      timeout: 10m0s
+      type: Ready
+    - status: "False"
+      timeout: 10m0s
+      type: Ready
+---
+# Source: openstack-cluster/charts/addons/templates/cni/calico.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: Manifests
+metadata:
+  name: cj-cluster-cni-calico-globalnetpolicy
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: cni-calico-globalnetpolicy
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  targetNamespace: tigera-operator
+  releaseName: cni-calico-metadata-global-netpolicy
+  manifestSources:
+    - template: "---\napiVersion: projectcalico.org/v3\nkind: GlobalNetworkPolicy\nmetadata:\n  name: default.cj-cluster-deny-egress\nspec:\n  order: 10\n  namespaceSelector: kubernetes.io/metadata.name != 'openstack-system'\n  types:\n    - Egress\n  egress:\n    - action: Deny\n      ipVersion: 4\n      destination:\n        nets:\n          - 169.254.169.254/32\n        \n    - action: Deny\n      ipVersion: 6\n      destination:\n        nets:\n          - fe80::a9fe:a9fe/128\n        \n---\napiVersion: projectcalico.org/v3\nkind: GlobalNetworkPolicy\nmetadata:\n  name: default.cj-cluster-allow-global-egress\nspec:\n  order: 20\n  types:\n    - Egress\n  egress:\n    - action: Allow\n      ipVersion: 4\n      destination:\n        nets:\n          - 0.0.0.0/0\n        \n    - action: Allow\n      ipVersion: 6\n      destination:\n        nets:\n          - ::/0\n"
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/cloud-config.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: Manifests
+metadata:
+  name: cj-cluster-cloud-config
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: cloud-config
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  targetNamespace: openstack-system
+  releaseName: cloud-config
+  manifestSources:
+    - template: |
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: cloud-config
+        data:
+          {{ cloud_identity.data | toyaml | indent(2) }}
+        stringData:
+          cloud.conf: |
+            [Global]
+            use-clouds=true
+            clouds-file=/etc/config/clouds.yaml
+            cloud=openstack
+        {%- if "cacert" in cloud_identity.data %}
+            ca-file=/etc/config/cacert
+        {%- else %}
+            tls-insecure=true
+        {%- endif %}
+            [Networking]
+            internal-network-name={{ infra_cluster.status.network.name }}
+            [LoadBalancer]
+            floating-network-id={{ infra_cluster.status.externalNetwork.id }}
+            [BlockStorage]
+            ignore-volume-az=true
+---
+# Source: openstack-cluster/charts/addons/templates/openstack/csi-cinder.yaml
+apiVersion: addons.stackhpc.com/v1alpha1
+kind: Manifests
+metadata:
+  name: cj-cluster-csi-cinder-storageclass
+  labels:
+    helm.sh/chart: addons-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: csi-cinder
+spec:
+  clusterName: cj-cluster
+  bootstrap: true
+  targetNamespace: openstack-system
+  releaseName: csi-cinder-storageclass
+  manifestSources:
+    - template: |
+        apiVersion: storage.k8s.io/v1
+        kind: StorageClass
+        metadata:
+          name: csi-cinder
+          annotations:
+            storageclass.kubernetes.io/is-default-class: "true"
+        provisioner: cinder.csi.openstack.org
+        parameters:
+          availability: ceph
+        reclaimPolicy: Delete
+        allowVolumeExpansion: true
+        volumeBindingMode: WaitForFirstConsumer
+---
+# Source: openstack-cluster/templates/cluster-openstack.yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackCluster
+metadata:
+  name: cj-cluster
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+  annotations:
+    # We let Cluster API clean up this resource
+    # Deleting it ourselves, which CAPI is not expecting, can cause some nasty race conditions
+    helm.sh/resource-policy: keep
+spec:
+  identityRef:
+    name: cj-cluster-cloud-credentials
+    cloudName: openstack
+  managedSecurityGroups:
+    allowAllInClusterTraffic: true
+  managedSubnets:
+    - cidr: 192.168.128.0/17
+  apiServerLoadBalancer:
+    enabled: true
+  disableAPIServerFloatingIP: false
+  apiServerFloatingIP: 130.246.83.44
+  apiServerPort: 6443
+  controlPlaneOmitAvailabilityZone: true
+  network:
+    id: 3b468c07-2366-4970-9ef6-d9e46ee37a46
+  subnets:
+    - id: 5c718c14-7760-44eb-b128-ce897a73ea95
+---
+# Source: openstack-cluster/templates/control-plane/openstack-machine-template.yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackMachineTemplate
+metadata:
+  name: cj-cluster-control-plane-ad1a154c
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: control-plane
+  annotations:
+    capi.stackhpc.com/template-checksum: ad1a154c36c82223c02a78185eaff5d5950863838fd4c6cd11500c87252be3ec
+    # Cluster API complains when old templates disappear before it has rolled all the machines over
+    # When deploying with Helm, leave the resource behind and let Cluster API clean it up
+    helm.sh/resource-policy: keep
+spec:
+  template:
+    spec:
+      identityRef:
+        name: cj-cluster-cloud-credentials
+        cloudName: openstack
+      flavor: l3.nano
+      image:
+        filter:
+          name: capi-ubuntu-2204-kube-v1.34.3
+---
+# Source: openstack-cluster/templates/node-group/openstack-machine-template.yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackMachineTemplate
+metadata:
+  name: cj-cluster-default-md-0-2a187d81
+  labels:
+    helm.sh/chart: openstack-cluster-0.19.2
+    capi.stackhpc.com/managed-by: Helm
+    capi.stackhpc.com/infrastructure-provider: openstack
+    capi.stackhpc.com/cluster: cj-cluster
+    capi.stackhpc.com/component: worker
+    capi.stackhpc.com/node-group: default-md-0
+  annotations:
+    capi.stackhpc.com/template-checksum: 2a187d816243732bad267fadcecf71d4ca50f73a137c7793c12635387617f36a
+    # Cluster API complains when old templates disappear before it has rolled all the machines over
+    # When deploying with Helm, leave the resource behind and let Cluster API clean it up
+    helm.sh/resource-policy: keep
+spec:
+  template:
+    spec:
+      identityRef:
+        name: cj-cluster-cloud-credentials
+        cloudName: openstack
+      flavor: l3.micro
+      image:
+        filter:
+          name: capi-ubuntu-2204-kube-v1.34.3
