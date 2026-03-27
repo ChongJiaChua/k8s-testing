@@ -3,7 +3,7 @@
 # to be used by the cluster. If this is not set, a new floating IP will be
 # allocated for the cluster each time it is created and clusters cannot .
 apiServer:
-  floatingIP: "130.246.81.109"
+  floatingIP: "130.246.83.44"
 
 # --------------------------- Optional Values -------------------------
 # List of comma separated additional packages to install on cluster nodes
